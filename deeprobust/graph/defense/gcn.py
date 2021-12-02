@@ -5,6 +5,7 @@ import math
 import torch
 import torch.optim as optim
 import numpy as np
+import scipy.sparse as sp
 from torch.nn.parameter import Parameter
 from torch.nn.modules.module import Module
 from deeprobust.graph import utils
@@ -147,9 +148,10 @@ class GCN(nn.Module):
         if self.attention: # applied gsl algrithm
             att, n_adj = self.gsl(x,n_adj,call_time=1)
 
-            r,c = att.nonzero()[:,0],att.nonzero()[:,1] # get edge index r,c
+            att_d = att.to_dense()
+            r,c = att_d.nonzero()[:,0],att_d.nonzero()[:,1] # get edge index r,c
             edge_index = torch.stack((r,c),dim=0) # combine to a array
-            adj_values = att[r,c] # get values
+            adj_values = att_d[r,c] # get values
 
         else:
             edge_index = adj._indices()
@@ -194,7 +196,7 @@ class GCN(nn.Module):
 
         node_num = features.shape[0]
 
-        r,c = edge_index[0].cpu().data.numpy(),edge_index[1].cpu().data.numpy()
+        r,c = edge_index[0].cpu().data.numpy()[:],edge_index[1].cpu().data.numpy()[:]
         
         features_cp = features.cpu().data.numpy()
 
@@ -208,12 +210,12 @@ class GCN(nn.Module):
 
 
         # decide perturbation edge number
-        ptb_edge_num = len(r)*0.05 #node_num**2*0.05 
-        ptb_edge_num = int((ptb_edge_num + ptb_edge_num%2)*2)
+        ptb_edge_num = int(len(r)*0.3) #node_num**2*0.05 
+        ptb_edge_num = ptb_edge_num + ptb_edge_num%2
 
-        print("val of edges === {}\n".format(ptb_edge_num))
-        print("m_score == {}".format(m_score))
-        print(type(m_score))
+        #print("val of edges === {}\n".format(ptb_edge_num))
+        #print("m_score == {}".format(m_score))
+        #print(type(m_score))
         # function to get largest index
         # https://stackoverflow.com/questions/43386432/how-to-get-indexes-of-k-maximum-values-from-a-numpy-multidimensional-array
 
@@ -228,31 +230,44 @@ class GCN(nn.Module):
         #print(trans_mal)
         # build the new adjacency matrix
         n_adj = lil_matrix((node_num,node_num),dtype = np.float32) 
-        print("n_adj === {}".format(n_adj))
         #sys.exit()
         
-        n_adj[tuple(trans_mal)] = 1-adj[tuple(trans_mal)]
-
+        n_adj[tuple(trans_mal)] = 1
+        temp = lil_matrix((node_num,node_num),dtype = np.float32)
+        #print(type(temp))
+        #print("adj === ",type(adj))
+        if type(adj) is torch.Tensor:
+            adj = utils.to_scipy(adj).tolil()
+        #print(type(adj))
+        temp[tuple(trans_mal)] = adj[tuple(trans_mal)]
+        n_adj = n_adj-temp
+	
+	
         # Redo the connection: old connection(non-zero) + reversed malicious edge
         r1,c1 = n_adj.nonzero()
         r_adj = np.vstack((r1,c1))
+        r_adj = torch.tensor(r_adj, dtype=torch.int64)
         v = n_adj[r1,c1]
-        n_adj = torch.sparse,FloatTensor(r_adj,v,(node_num,node_num))
+        v = torch.tensor(np.ones(len(r1)),dtype = torch.int64)
+        #print(r_adj,v)
+        n_adj = torch.sparse.FloatTensor(r_adj,v,(node_num,node_num))
 
         # Build Attention matrix
         att = lil_matrix((node_num,node_num),dtype = np.float32) 
         att[r,c]=sim
-        att[tuple(trans_mal)] = 1-adj[tuple(trans_mal)]
+        att[tuple(trans_mal)] = 1
+        att = att - temp
+	
 
 
         # the following approach is the attention aproach
         if att[0,0] == 1:
             att = att-sp.diags(att.diagonal(),offsets=0,format='lil')
-
+        
         att_norm = normalize(att,axis=1,norm='l1')
 
         if att_norm[0,0] == 0:
-            degree = (att_norm !=0).sum().A1
+            degree = (att_norm !=0).sum(1).A1
             lam = 1/(degree+1)
             self_weight = sp.diags(np.array(lam),offsets=0,format='lil')
             ret_att = att_norm + self_weight
