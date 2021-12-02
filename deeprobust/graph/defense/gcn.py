@@ -1,13 +1,19 @@
 import torch.nn as nn
+import sys
 import torch.nn.functional as F
 import math
 import torch
 import torch.optim as optim
+import numpy as np
 from torch.nn.parameter import Parameter
 from torch.nn.modules.module import Module
 from deeprobust.graph import utils
 from copy import deepcopy
+from torch_geometric.nn import GCNConv
 from sklearn.metrics import f1_score
+from scipy.sparse import lil_matrix
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import normalize
 
 class GraphConvolution(Module):
     """Simple GCN layer, similar to https://github.com/tkipf/pygcn
@@ -103,10 +109,15 @@ class GCN(nn.Module):
         self.nfeat = nfeat
         self.hidden_sizes = [nhid]
         self.nclass = nclass
-        self.gc1 = GraphConvolution(nfeat, nhid, with_bias=with_bias)
-        self.gc2 = GraphConvolution(nhid, nclass, with_bias=with_bias)
         self.dropout = dropout
         self.lr = lr
+        
+        # GCN  
+        #self.gc1 = GraphConvolution(nfeat, nhid, bias=with_bias)
+        #self.gc2 = GraphConvolution(nhid, nclass, bias=with_bias)
+        self.gc1 = GCNConv(nfeat,nhid,bias=True)
+        self.gc2 = GCNConv(nhid,nclass,bias=True)
+        
         if not with_relu:
             self.weight_decay = 0
         else:
@@ -118,8 +129,37 @@ class GCN(nn.Module):
         self.best_output = None
         self.adj_norm = None
         self.features = None
+    
 
+    # =================== QUAN ============================
     def forward(self, x, adj):
+        x = x.to_dense()
+
+        if self.attention: # use GSL
+            att, n_adj = self.gsl(x,adj) # applied gsl algorithm
+        else:
+            att = adj
+ 
+        edge_index = att._indices() # get edge index
+        x = self.gc1(x,edge_index,edge_weight = att._values()) #pass to layer 1
+        x = F.relu(x)
+
+        if self.attention: # applied gsl algrithm
+            att, n_adj = self.gsl(x,n_adj,call_time=1)
+
+            r,c = att.nonzero()[:,0],att.nonzero()[:,1] # get edge index r,c
+            edge_index = torch.stack((r,c),dim=0) # combine to a array
+            adj_values = att[r,c] # get values
+
+        else:
+            edge_index = adj._indices()
+            adj_values = adj._values()
+
+        x = F.dropout(x,self.dropout,training=self.training)
+        x = self.gc2(x,edge_index,edge_weight = adj_values)
+
+        return F.log_softmax(x,dim=1)
+        '''
         if self.with_relu:
             x = F.relu(self.gc1(x, adj))
         else:
@@ -128,6 +168,8 @@ class GCN(nn.Module):
         x = F.dropout(x, self.dropout, training=self.training)
         x = self.gc2(x, adj)
         return F.log_softmax(x, dim=1)
+        '''
+    # ==================================================================
 
     def initialize(self):
         """Initialize parameters of GCN.
@@ -135,7 +177,105 @@ class GCN(nn.Module):
         self.gc1.reset_parameters()
         self.gc2.reset_parameters()
 
-    def fit(self, features, adj, labels, idx_train, idx_val=None, train_iters=200, initialize=True, verbose=False, normalize=True, patience=500, **kwargs):
+
+    # =============================== QUAN ==============================
+    def gsl(self, features, adj, is_lil = False, call_time = 0):
+        """
+        features: features of nodes
+        adj: adjacency matrix which include index and values
+        is_lil: whether adj matrix is lil matrix or not
+        i: i-th call this function
+        """
+        edge_index = None
+        if is_lil:
+            edge_index = adj.tocoo()
+        else:
+            edge_index = adj._indices()
+
+        node_num = features.shape[0]
+
+        r,c = edge_index[0].cpu().data.numpy(),edge_index[1].cpu().data.numpy()
+        
+        features_cp = features.cpu().data.numpy()
+
+        sim_matrix = cosine_similarity(X = features_cp, Y = features_cp) #calculate the sim between nodes
+        sim = sim_matrix[r, c] # grab sim scores for existing esges in adj matrix
+
+
+        # calculate the malicious score
+        #m_score = abs(sim_matrix - adj.todense())
+        m_score = abs(sim_matrix - utils.to_scipy(adj).tolil())
+
+
+        # decide perturbation edge number
+        ptb_edge_num = len(r)*0.05 #node_num**2*0.05 
+        ptb_edge_num = int((ptb_edge_num + ptb_edge_num%2)*2)
+
+        print("val of edges === {}\n".format(ptb_edge_num))
+        print("m_score == {}".format(m_score))
+        print(type(m_score))
+        # function to get largest index
+        # https://stackoverflow.com/questions/43386432/how-to-get-indexes-of-k-maximum-values-from-a-numpy-multidimensional-array
+
+        def k_largest_index_argsort(a, k):
+            idx = np.argsort(a.ravel())[:-k-1:-1]
+            return np.column_stack(np.unravel_index(idx, a.shape))
+
+
+        mal_index = k_largest_index_argsort(np.asarray(m_score), ptb_edge_num)
+        #print(mal_index)
+        trans_mal=[mal_index[:,0], mal_index[:,1]]
+        #print(trans_mal)
+        # build the new adjacency matrix
+        n_adj = lil_matrix((node_num,node_num),dtype = np.float32) 
+        print("n_adj === {}".format(n_adj))
+        #sys.exit()
+        
+        n_adj[tuple(trans_mal)] = 1-adj[tuple(trans_mal)]
+
+        # Redo the connection: old connection(non-zero) + reversed malicious edge
+        r1,c1 = n_adj.nonzero()
+        r_adj = np.vstack((r1,c1))
+        v = n_adj[r1,c1]
+        n_adj = torch.sparse,FloatTensor(r_adj,v,(node_num,node_num))
+
+        # Build Attention matrix
+        att = lil_matrix((node_num,node_num),dtype = np.float32) 
+        att[r,c]=sim
+        att[tuple(trans_mal)] = 1-adj[tuple(trans_mal)]
+
+
+        # the following approach is the attention aproach
+        if att[0,0] == 1:
+            att = att-sp.diags(att.diagonal(),offsets=0,format='lil')
+
+        att_norm = normalize(att,axis=1,norm='l1')
+
+        if att_norm[0,0] == 0:
+            degree = (att_norm !=0).sum().A1
+            lam = 1/(degree+1)
+            self_weight = sp.diags(np.array(lam),offsets=0,format='lil')
+            ret_att = att_norm + self_weight
+        else:
+            ret_att = att_norm
+
+        row,col = ret_att.nonzero()
+        att_adj = np.vstack((row,col))
+        att_edge_w = ret_att[row,col]
+        att_edge_w = np.exp(att_edge_w)
+        att_edge_w = torch.tensor(np.array(att_edge_w)[0],dtype=torch.float32)
+        att_adj = torch.tensor(att_adj,dtype=torch.int64)
+
+        shape = (node_num,node_num)
+
+        final_att = torch.sparse.FloatTensor(att_adj,att_edge_w,shape)
+
+        return final_att.to(self.device), n_adj.to(self.device)
+
+        
+
+
+    def fit(self, features, adj, labels, idx_train, idx_val=None, train_iters=200, attention=False, initialize=True, verbose=False, normalize=True, patience=500, **kwargs):
         """Train the gcn model, when idx_val is not None, pick the best model according to the validation loss.
 
         Parameters
@@ -161,6 +301,7 @@ class GCN(nn.Module):
         patience : int
             patience for early stopping, only valid when `idx_val` is given
         """
+        self.attention = attention
 
         self.device = self.gc1.weight.device
         if initialize:
@@ -307,7 +448,7 @@ class GCN(nn.Module):
         print("Test set results:",
               "loss= {:.4f}".format(loss_test.item()),
               "accuracy= {:.4f}".format(acc_test.item()))
-        return acc_test.item()
+        return acc_test, output
 
 
     def predict(self, features=None, adj=None):
