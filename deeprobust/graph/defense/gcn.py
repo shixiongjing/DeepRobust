@@ -16,6 +16,8 @@ from scipy.sparse import lil_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 
+fwd_att = True
+
 class GraphConvolution(Module):
     """Simple GCN layer, similar to https://github.com/tkipf/pygcn
     """
@@ -132,8 +134,34 @@ class GCN(nn.Module):
         self.features = None
     
 
-    # =================== QUAN ============================
+    def double_forward(self, x, adj):
+        x = x.to_dense()
+
+        # grab final att first
+
+        att, n_adj = self.gsl(x,adj) # applied gsl algorithm=
+        edge_index = att._indices() # get edge index
+
+        tx = self.gc1(x,edge_index,edge_weight = att._values()) #pass to layer 1
+        tx = F.relu(tx)
+        att, n_adj = self.gsl(tx,n_adj,call_time=1)
+        att_d = att.to_dense()
+        r,c = att_d.nonzero()[:,0],att_d.nonzero()[:,1] # get edge index r,c
+        edge_index = torch.stack((r,c),dim=0) # combine to a array
+        adj_values = att_d[r,c] # get values
+
+        x = self.gc1(x,edge_index,edge_weight = adj_values) #pass to layer 1
+        x = F.relu(x)
+        x = F.dropout(x,self.dropout,training=self.training)
+        x = self.gc2(x,edge_index,edge_weight = adj_values)
+
+        return F.log_softmax(x,dim=1)
+
+
     def forward(self, x, adj):
+        if fwd_att:
+            return double_forward(x, adj)
+
         x = x.to_dense()
 
         if self.attention: # use GSL
