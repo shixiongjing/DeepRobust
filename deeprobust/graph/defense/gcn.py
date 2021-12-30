@@ -160,7 +160,7 @@ class GCN(nn.Module):
 
     def forward(self, x, adj):
         if fwd_att:
-            return double_forward(x, adj)
+            return self.double_forward(x, adj)
 
         x = x.to_dense()
 
