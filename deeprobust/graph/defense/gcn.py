@@ -16,7 +16,7 @@ from scipy.sparse import lil_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 
-fwd_att = True
+fwd_att = 2
 
 class GraphConvolution(Module):
     """Simple GCN layer, similar to https://github.com/tkipf/pygcn
@@ -157,10 +157,27 @@ class GCN(nn.Module):
 
         return F.log_softmax(x,dim=1)
 
+    def single_forward(self, x, adj):
+        x = x.to_dense()
+
+        # grab final att first
+
+        att, n_adj = self.gsl(x,adj) # applied gsl algorithm=
+        edge_index = att._indices() # get edge index
+
+        x = self.gc1(x,edge_index,edge_weight = att._values()) #pass to layer 1
+        x = F.relu(x)
+        x = F.dropout(x,self.dropout,training=self.training)
+        x = self.gc2(x,edge_index,edge_weight = att._values())
+
+        return F.log_softmax(x,dim=1)
+
 
     def forward(self, x, adj):
-        if fwd_att:
+        if fwd_att == 1:
             return self.double_forward(x, adj)
+        if fwd_att == 2:
+            return self.single_forward(x, adj)
 
         x = x.to_dense()
 
