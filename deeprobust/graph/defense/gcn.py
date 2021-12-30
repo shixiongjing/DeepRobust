@@ -210,7 +210,7 @@ class GCN(nn.Module):
 
 
         # decide perturbation edge number
-        ptb_edge_num = int(len(r)*0.3) #node_num**2*0.05 
+        ptb_edge_num = int(node_num*node_num*0.075) #node_num**2*0.05 
         ptb_edge_num = ptb_edge_num + ptb_edge_num%2
 
         #print("val of edges === {}\n".format(ptb_edge_num))

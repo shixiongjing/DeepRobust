@@ -84,13 +84,13 @@ def main():
 
     print("=======test on clean adj===================")
     print("without defense :: ")
-    test(adj, features, target_node)
+    test(adj, features, target_node,defense_al=False)
     print("with defense (with default setting):: ")
     test(adj, features, target_node, defense_al = defense)
 
     print("================ test on perturbed adj =================")
     print("without defense ::")
-    test(m_adj, m_features, target_node)
+    test(m_adj, m_features, target_node,defense_al=False)
     print("with defense (with default setting)::")
     test(m_adj, m_features, target_node, defense_al = defense)
 
@@ -100,7 +100,7 @@ def test(adj, features, target, defense_al=False):
     target_model = globals()[args.model](nfeat = features.shape[1], nhid = 16, nclass = labels.max().item()+1, dropout = 0.5, device = device)
     target_model = target_model.to(device)
 
-    target_model.fit(features, adj, labels, idx_train, idx_val=idx_val, attention = defense)
+    target_model.fit(features, adj, labels, idx_train, idx_val=idx_val, attention = defense_al)
 
     target_model.eval()
 
@@ -119,102 +119,96 @@ def test(adj, features, target, defense_al=False):
     return acc_test.item()
 
 
-def select_nodes(target_gcn=None):
-    '''
-    selecting nodes as reported in nettack paper:
-    (i) the 10 nodes with highest margin of classification, i.e. they are clearly correctly classified,
-    (ii) the 10 nodes with lowest margin (but still correctly classified) and
-    (iii) 20 more nodes randomly
-    '''
-
-    if target_gcn is None:
-        target_gcn = globals()[args.model](nfeat=features.shape[1],
-                  nhid=16,
-                  nclass=labels.max().item() + 1,
-                  dropout=0.5, device=device)
-        target_gcn = target_gcn.to(device)
-        target_gcn.fit(adj, features, labels, idx_train, idx_val, patience=30)
-    target_gcn.eval()
-    output = target_gcn.predict()
-    degrees = adj.sum(0).A1
-
-    margin_dict = {}
-    for idx in tqdm(idx_test):
-        
-        margin = classification_margin(output[idx], labels[idx])
-        
-        if margin < 0 or int(degrees[idx]<1): # only keep the nodes correctly classified
-            # change the degrees parameter here can control the min number of the perturbations of nodes so that can select the nodes with different number of perturbations
-            continue
-        
-        # GNNGuard checked outliers here dont know why, but just added it here - Quan
-        neighbors = list(adj.todense()[idx].nonzero()[1])
-        y = [labels[i] for i in neighbors]
-        node_y = labels[idx]
-        aa = node_y == y
-        outlier_score = 1- aa.sum()/len(aa)
-        if outlier_score > 0.5:
-            continue
-
-
-        margin_dict[idx] = margin
-
-
-    sorted_margins = sorted(margin_dict.items(), key=lambda x:x[1], reverse=True)
-    high = [x for x, y in sorted_margins[: 10]]
-    low = [x for x, y in sorted_margins[-10: ]]
-    other = [x for x, y in sorted_margins[10: -10]]
-    other = np.random.choice(other, 20, replace=False).tolist()
-
-    return high + low + other
-
-def multi_test_poison():
-    # test on 40 nodes on poisoining attack
+def multi_test():
     cnt = 0
     degrees = adj.sum(0).A1
-    node_list = select_nodes()
-    
-    if args.debug:
-        print(node_list)
+    node_list = select_nodes(num_target=10)
+    print(node_list)
 
     num = len(node_list)
-    print('=== [Poisoning] Attacking %s nodes respectively ===' % num)
+    print('=== Attacking %s nodes respectively ===' % num)
     num_tar = 0
     for target_node in tqdm(node_list):
         n_perturbations = int(degrees[target_node])
-        model = Nettack(surrogate, nnodes=adj.shape[0], attack_structure=True, attack_features=True, device=device)
+        if n_perturbations <1:  # at least one perturbation
+            continue
+
+        model = Nettack(surrogate, nnodes=adj.shape[0], attack_structure=True, attack_features=False, device=device)
         model = model.to(device)
-        model.attack(features, adj, labels, target_node, n_perturbations, verbose=False)
+        model.attack(features, adj, labels, target_node, n_perturbations, direct=True, verbose=False)
         modified_adj = model.modified_adj
         modified_features = model.modified_features
         acc = single_test(modified_adj, modified_features, target_node)
         if acc == 0:
             cnt += 1
         num_tar += 1
-        if args.debug:
-            print("classification rate = %s" % (1-cnt/num_tar), "# of targets : ", num_tar)
-    print('misclassification rate : %s' % (cnt/num))
+        print('classification rate : %s' % (1-cnt/num_tar), '# of targets:', num_tar)
+
 
 def single_test(adj, features, target_node):
-    
-    # test on GCN (poisoning attack)
-    classifier = globals()[args.model](nfeat=features.shape[1],
-                nhid=16,
-                nclass=labels.max().item() + 1,
-                dropout=0.5, device=device).to(device)
+    'ALL the baselines'
 
-    classifier.fit(adj, features, labels, idx_train, idx_val, attention = defense, patience=30)
+    # """defense models"""
+    # classifier = globals()[args.defensemodel](nnodes=adj.shape[0], nfeat=features.shape[1], nhid=16,
+    #                                           nclass=labels.max().item() + 1, dropout=0.5, device=device)
+
+    # ''' test on GCN (poisoning attack), model could be GCN, GAT, GIN'''
+    classifier = globals()[args.model](nfeat=features.shape[1], nhid=16, nclass=labels.max().item() + 1, dropout=0.5, device=device)
+    classifier = classifier.to(device)
+    classifier.fit(features, adj, labels, idx_train,
+                   idx_val=idx_val,
+                   idx_test=idx_test,
+                   verbose=False, attention=defense) #model_name=model_name
     classifier.eval()
-    output = classifier.predict()
+    acc_overall, output =  classifier.test(idx_test, ) #model_name=model_name
+
     probs = torch.exp(output[[target_node]])
-    acc_test, pred_y, true_y = accuracy_1(output[[target_node]],labels[target_node])
-    if args.debug:
-        print("target: {}, pred: {}, label: {}".format(target_node, pred_y.item(),true_y.item()))
-        print("predict prob: ",probs.data)
-    # acc_test = accuracy(output[[target_node]], labels[target_node])
-    #acc_test = (output.argmax(1)[target_node] == labels[target_node])
+    acc_test, pred_y, true_y = accuracy_1(output[[target_node]], labels[target_node])
+    print('target:{}, pred:{}, label: {}'.format(target_node, pred_y.item(), true_y.item()))
+    print('Pred probs', probs.data)
     return acc_test.item()
-    
+
+"""=======Basic Functions============="""
+def select_nodes(num_target = 10):
+    '''
+    selecting nodes as reported in nettack paper:
+    (i) the 10 nodes with highest margin of classification, i.e. they are clearly correctly classified,
+    (ii) the 10 nodes with lowest margin (but still correctly classified) and
+    (iii) 20 more nodes randomly
+    '''
+    gcn = globals()[args.model](nfeat=features.shape[1],
+              nhid=16,
+              nclass=labels.max().item() + 1,
+              dropout=0.5, device=device)
+    gcn = gcn.to(device)
+    gcn.fit(features, adj, labels, idx_train, idx_test, verbose=True)
+    gcn.eval()
+    output = gcn.predict()
+    degrees = adj.sum(0).A1
+
+    margin_dict = {}
+    for idx in tqdm(idx_test):
+        margin = classification_margin(output[idx], labels[idx])
+        acc, _, _ = accuracy_1(output[[idx]], labels[idx])
+        if acc==0 or int(degrees[idx])<1: # only keep the correctly classified nodes
+            continue
+        """check the outliers:"""
+        neighbours = list(adj.todense()[idx].nonzero()[1])
+        y = [labels[i] for i in neighbours]
+        node_y = labels[idx]
+        aa = node_y==y
+        outlier_score = 1- aa.sum()/len(aa)
+        if outlier_score >=0.5:
+            continue
+
+        margin_dict[idx] = margin
+    sorted_margins = sorted(margin_dict.items(), key=lambda x:x[1], reverse=True)
+    high = [x for x, y in sorted_margins[: num_target]]
+    low = [x for x, y in sorted_margins[-num_target: ]]
+    other = [x for x, y in sorted_margins[num_target: -num_target]]
+    other = np.random.choice(other, 2*num_target, replace=False).tolist()
+
+    return other + high + low        
     
     
 def accuracy_1(output,labels):
@@ -236,8 +230,8 @@ def accuracy_1(output,labels):
 
 
 if __name__ == "__main__":
-    main()
-    #multi_test()
+    #main()
+    multi_test()
 
 
 
