@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=15, help='Random seed.')
 parser.add_argument('--dataset', type=str, default='citeseer', choices=['cora', 'cora_ml', 'citeseer', 'polblogs', 'pubmed'], help='dataset')
 parser.add_argument('--ptb_rate', type=float, default=0.05,  help='pertubation rate')
+parser.add_argument('--ptb_n', type=int, default=0,  help='pertubation number')
 
 
 args = parser.parse_args()
@@ -36,8 +37,10 @@ idx_unlabeled = np.union1d(idx_val, idx_test)
 # Setup Attack Model
 model = Random()
 
-n_perturbations = int(args.ptb_rate * (adj.sum()//2))
-
+if args.ptb_n == 0:
+    n_perturbations = int(args.ptb_rate * (adj.sum()//2))
+else:
+    n_perturbations = args.ptb_n
 model.attack(adj, n_perturbations)
 modified_adj = model.modified_adj
 
