@@ -109,7 +109,7 @@ def main():
     # print('=== testing GCN on perturbed graph ===')
     # test(modified_adj)
     S_Distance,eigv_dif = SpectralDistance(adj,modified_adj)
-    print(S_Distance, eigv_dif)
+    print('n_ptb: {}, S_Dis: {}, Eigv_dif: {}'.format(n_perturbations, S_Distance, eigv_dif))
 
 
 if __name__ == '__main__':
