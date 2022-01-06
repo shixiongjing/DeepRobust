@@ -100,7 +100,7 @@ def main():
     # test(adj)
     # print('=== testing GCN on perturbed graph ===')
     # test(modified_adj)
-    S_Distance,eigv_dif = SpectralDistance(adj,modified_adj)
+    S_Distance,eigv_dif = SpectralDistance(adj.cpu(),modified_adj.cpu())
     print(S_Distance, eigv_dif)
 
 
