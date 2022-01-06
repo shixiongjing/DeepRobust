@@ -41,6 +41,7 @@ if args.ptb_n == 0:
     n_perturbations = int(args.ptb_rate * (adj.sum()//2))
 else:
     n_perturbations = args.ptb_n
+print('perturbation number: '+n_perturbations)
 model.attack(adj, n_perturbations)
 modified_adj = model.modified_adj
 
