@@ -42,13 +42,13 @@ model.attack(adj, n_perturbations)
 modified_adj = model.modified_adj
 
 adj, features, labels = preprocess(adj, features, labels, preprocess_adj=False, sparse=True)
-#adj = adj.to(device)
+adj = adj.to(device)
 features = features.to(device)
 labels = labels.to(device)
 
 modified_adj = normalize_adj(modified_adj)
 modified_adj = sparse_mx_to_torch_sparse_tensor(modified_adj)
-#modified_adj = modified_adj.to(device)
+modified_adj = modified_adj.to(device)
 
 def SpectralDistance(adj,m_adj):
 
