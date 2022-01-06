@@ -9,6 +9,7 @@ from deeprobust.graph.data import Dataset
 import argparse
 from scipy.sparse.linalg import eigs
 from scipy.sparse import csgraph,lil_matrix
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=15, help='Random seed.')
@@ -22,7 +23,10 @@ args.cuda = torch.cuda.is_available()
 print('cuda: %s' % args.cuda)
 device = torch.device("cuda" if args.cuda else "cpu")
 
-np.random.seed(args.seed)
+if args.seed == -1:
+    np.random.seed(int(time.time()))
+else:
+    np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
