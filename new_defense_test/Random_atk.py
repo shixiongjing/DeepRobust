@@ -108,8 +108,10 @@ def main():
     # test(adj)
     # print('=== testing GCN on perturbed graph ===')
     # test(modified_adj)
-    S_Distance,eigv_dif = SpectralDistance(adj,modified_adj)
     print('n_ptb: {}, S_Dis: {}, Eigv_dif: {}'.format(n_perturbations, S_Distance, eigv_dif))
+    S_Distance,eigv_dif = SpectralDistance(adj,modified_adj)
+    with open(args.dataset+'_'+'Random_vs_Net.log','a+') as f:
+        print('n_ptb: {}, S_Dis: {}, Eigv_dif: {}'.format(n_perturbations, S_Distance, eigv_dif), file=f)
 
 
 if __name__ == '__main__':
