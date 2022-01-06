@@ -19,7 +19,7 @@ parser.add_argument('--ptb_rate', type=float, default=0.05,  help='pertubation r
 args = parser.parse_args()
 args.cuda = torch.cuda.is_available()
 print('cuda: %s' % args.cuda)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if args.cuda else "cpu")
 
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
