@@ -276,7 +276,7 @@ class GCN(nn.Module):
         # build the new adjacency matrix
         n_adj = lil_matrix((node_num,node_num),dtype = np.float32) 
         #sys.exit()
-        
+        n_adj[r,c]=1
         n_adj[tuple(trans_mal)] = 1
         temp = lil_matrix((node_num,node_num),dtype = np.float32)
         #print(type(temp))
@@ -295,13 +295,13 @@ class GCN(nn.Module):
         att[tuple(trans_mal)] = 1
         inf_weight = att.multiply(n_adj)
         old_att = att - temp
-        # assert ((inf_weight!=old_att).nnz==0)
-        print("inf_weight")
-        print(inf_weight)
-        print("inf_weight")
-        print(old_att)
-        print("diff")
-        print(inf_weight - old_att)
+        assert ((inf_weight!=old_att).nnz==0)
+        # print("inf_weight")
+        # print(inf_weight)
+        # print("old_weight")
+        # print(old_att)
+        # print("diff")
+        # print(inf_weight - old_att)
 
 
 
