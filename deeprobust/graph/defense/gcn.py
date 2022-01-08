@@ -16,7 +16,7 @@ from scipy.sparse import lil_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 
-fwd_att = 1
+fwd_att = 0
 
 class GraphConvolution(Module):
     """Simple GCN layer, similar to https://github.com/tkipf/pygcn
@@ -286,30 +286,30 @@ class GCN(nn.Module):
         #print(type(adj))
         temp[tuple(trans_mal)] = adj[tuple(trans_mal)]
         n_adj = n_adj-temp
-	
-	
-        # Redo the connection: old connection(non-zero) + reversed malicious edge
-        r1,c1 = n_adj.nonzero()
-        r_adj = np.vstack((r1,c1))
-        r_adj = torch.tensor(r_adj, dtype=torch.int64)
-        v = n_adj[r1,c1]
-        v = torch.tensor(np.ones(len(r1)),dtype = torch.int64)
-        #print(r_adj,v)
-        n_adj = torch.sparse.FloatTensor(r_adj,v,(node_num,node_num))
-
+    
+    
+        
         # Build Attention matrix
         att = lil_matrix((node_num,node_num),dtype = np.float32) 
         att[r,c]=sim
         att[tuple(trans_mal)] = 1
-        att = att - temp
-	
+        inf_weight = att.multiply(n_adj)
+        old_att = att - temp
+        # assert ((inf_weight!=old_att).nnz==0)
+        print("inf_weight")
+        print(inf_weight)
+        print("inf_weight")
+        print(old_att)
+        print("diff")
+        print(inf_weight - old_att)
+
 
 
         # the following approach is the attention aproach
-        if att[0,0] == 1:
-            att = att-sp.diags(att.diagonal(),offsets=0,format='lil')
+        if inf_weight[0,0] == 1:
+            inf_weight = inf_weight-sp.diags(inf_weight.diagonal(),offsets=0,format='lil')
         
-        att_norm = normalize(att,axis=1,norm='l1')
+        att_norm = normalize(inf_weight,axis=1,norm='l1')
 
         if att_norm[0,0] == 0:
             degree = (att_norm !=0).sum(1).A1
@@ -319,6 +319,16 @@ class GCN(nn.Module):
         else:
             ret_att = att_norm
 
+    #  Reformat n_adj to floattensor
+        r1,c1 = n_adj.nonzero()
+        r_adj = np.vstack((r1,c1))
+        r_adj = torch.tensor(r_adj, dtype=torch.int64)
+        v = n_adj[r1,c1]
+        v = torch.tensor(np.ones(len(r1)),dtype = torch.int64)
+        #print(r_adj,v)
+        n_adj = torch.sparse.FloatTensor(r_adj,v,(node_num,node_num))
+    
+    #  Reformat att to floattensor
         row,col = ret_att.nonzero()
         att_adj = np.vstack((row,col))
         att_edge_w = ret_att[row,col]
