@@ -294,14 +294,8 @@ class GCN(nn.Module):
         att[r,c]=sim
         att[tuple(trans_mal)] = 1
         inf_weight = att.multiply(n_adj)
-        old_att = att - temp
-        assert ((inf_weight!=old_att).nnz==0)
-        # print("inf_weight")
-        # print(inf_weight)
-        # print("old_weight")
-        # print(old_att)
-        # print("diff")
-        # print(inf_weight - old_att)
+        #old_att = att - temp
+        #assert ((inf_weight!=old_att).nnz==0)
 
 
 
