@@ -291,8 +291,10 @@ class GCN(nn.Module):
         
         # Build Attention matrix
         att = lil_matrix((node_num,node_num),dtype = np.float32) 
+        sim[sim<0.3]=0
         att[r,c]=sim
         att[tuple(trans_mal)] = 1
+        # The new weight is point-wise multiplied with modified Adjacency Matrix
         inf_weight = att.multiply(n_adj)
         #old_att = att - temp
         #assert ((inf_weight!=old_att).nnz==0)
