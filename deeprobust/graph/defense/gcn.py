@@ -16,7 +16,7 @@ from scipy.sparse import lil_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 
-fwd_att = 0
+fwd_att = 3
 
 class GraphConvolution(Module):
     """Simple GCN layer, similar to https://github.com/tkipf/pygcn
@@ -172,12 +172,37 @@ class GCN(nn.Module):
 
         return F.log_softmax(x,dim=1)
 
+    def blind_gsl_forward(self, x):
+        x = x.to_dense()
+
+        n_adj = self.blind_gsl(x) # applied gsl algorithm
+        edge_index = n_adj._indices() # get edge index
+        x = self.gc1(x,edge_index,edge_weight = n_adj._values()) #pass to layer 1, n_adj is attention adjacency
+        x = F.relu(x)
+
+        
+        n_adj = self.blind_gsl(x,n_adj,call_time=1)
+
+        att_d = n_adj.to_dense()
+        r,c = att_d.nonzero()[:,0],att_d.nonzero()[:,1] # get edge index r,c
+        edge_index = torch.stack((r,c),dim=0) # combine to a array
+        adj_values = att_d[r,c] # get values
+
+        
+
+        x = F.dropout(x,self.dropout,training=self.training)
+        x = self.gc2(x,edge_index,edge_weight = adj_values)
+
+        return F.log_softmax(x,dim=1)
+
 
     def forward(self, x, adj):
         if fwd_att == 1:
             return self.single_forward(x, adj)
         if fwd_att == 2:
             return self.double_forward(x, adj)
+        if fwd_att == 3:
+            return self.blind_gsl_forward(x)
 
         x = x.to_dense()
 
@@ -339,6 +364,84 @@ class GCN(nn.Module):
         return final_att.to(self.device), n_adj.to(self.device)
 
         
+    # This is the graph structure learning alike approach
+    # Assume we do not use Adjacency Matrix, we only have features
+    # We reconstruct the graph only base on feature similarity
+    def blind_gsl(self, features, is_lil = False, call_time = 0):
+        """
+        features: features of nodes
+        adj: adjacency matrix which include index and values
+        is_lil: whether adj matrix is lil matrix or not
+        i: i-th call this function
+        """
+        
+
+        node_num = features.shape[0]
+        
+        features_cp = features.cpu().data.numpy()
+
+        sim_matrix = cosine_similarity(X = features_cp, Y = features_cp) #calculate the sim between nodes
+
+
+        # decide perturbation edge number
+        edge_num = int(node_num*node_num*0.025) #node_num**2*0.05 
+        edge_num = edge_num + edge_num%2
+
+        #print("val of edges === {}\n".format(ptb_edge_num))
+        #print("m_score == {}".format(m_score))
+        #print(type(m_score))
+        # function to get largest index
+        # https://stackoverflow.com/questions/43386432/how-to-get-indexes-of-k-maximum-values-from-a-numpy-multidimensional-array
+
+        def k_largest_index_argsort(a, k):
+            idx = np.argsort(a.ravel())[:-k-1:-1]
+            return np.column_stack(np.unravel_index(idx, a.shape))
+
+
+        edg_index = k_largest_index_argsort(np.asarray(sim_matrix), edge_num)
+        #print(mal_index)
+        trans_edg=[edg_index[:,0], edg_index[:,1]]
+        #print(trans_mal)
+        # build the new adjacency matrix
+        n_adj = lil_matrix((node_num,node_num),dtype = np.float32) 
+        n_adj[tuple(trans_edg)] = 1
+
+        # TODO: We can use similarity as attention
+        inf_weight = n_adj
+
+
+
+
+        # the following approach is the attention aproach
+        if inf_weight[0,0] == 1:
+            inf_weight = inf_weight-sp.diags(inf_weight.diagonal(),offsets=0,format='lil')
+        
+        att_norm = normalize(inf_weight,axis=1,norm='l1')
+
+        if att_norm[0,0] == 0:
+            degree = (att_norm !=0).sum(1).A1
+            lam = 1/(degree+1)
+            self_weight = sp.diags(np.array(lam),offsets=0,format='lil')
+            ret_att = att_norm + self_weight
+        else:
+            ret_att = att_norm
+
+    
+    
+    #  Reformat att to floattensor
+        row,col = ret_att.nonzero()
+        att_adj = np.vstack((row,col))
+        att_edge_w = ret_att[row,col]
+        att_edge_w = np.exp(att_edge_w)
+        att_edge_w = torch.tensor(np.array(att_edge_w)[0],dtype=torch.float32)
+        att_adj = torch.tensor(att_adj,dtype=torch.int64)
+
+        shape = (node_num,node_num)
+
+        final_att = torch.sparse.FloatTensor(att_adj,att_edge_w,shape)
+
+        return final_att.to(self.device)
+
 
 
     def fit(self, features, adj, labels, idx_train, idx_val=None, train_iters=200, attention=False, initialize=True, verbose=False, normalize=True, patience=500, **kwargs):
