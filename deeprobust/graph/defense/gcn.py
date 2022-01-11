@@ -181,7 +181,7 @@ class GCN(nn.Module):
         x = F.relu(x)
 
         
-        n_adj = self.blind_gsl(x,n_adj,call_time=1)
+        n_adj = self.blind_gsl(x,call_time=1)
 
         att_d = n_adj.to_dense()
         r,c = att_d.nonzero()[:,0],att_d.nonzero()[:,1] # get edge index r,c
