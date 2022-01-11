@@ -318,10 +318,9 @@ class GCN(nn.Module):
         
         
         # The new weight is point-wise multiplied with modified Adjacency Matrix
-
         sim_matrix[tuple(trans_mal)] = 1
         inf_weight = n_adj.multiply(sim_matrix)
-        
+        print(type(inf_weight))
         # assert ((inf_weight!=new_weight).nnz==0)
         
 
