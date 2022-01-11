@@ -333,7 +333,7 @@ class GCN(nn.Module):
         
         assert ((inf_weight!=new_weight).nnz==0)
         print("old time:"+str(t2-t1))
-        print("new time:"+str(t2-t1))
+        print("new time:"+str(t3-t2))
         print("-----")
 
 
