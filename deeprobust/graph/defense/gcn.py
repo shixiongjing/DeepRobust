@@ -16,7 +16,9 @@ from scipy.sparse import lil_matrix
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 
-fwd_att = 3
+import time
+
+fwd_att = 0
 
 class GraphConvolution(Module):
     """Simple GCN layer, similar to https://github.com/tkipf/pygcn
@@ -315,14 +317,24 @@ class GCN(nn.Module):
     
         
         # Build Attention matrix
+        t1 = time.time()
         att = lil_matrix((node_num,node_num),dtype = np.float32) 
-        sim[sim<0.3]=0
         att[r,c]=sim
         att[tuple(trans_mal)] = 1
         # The new weight is point-wise multiplied with modified Adjacency Matrix
         inf_weight = att.multiply(n_adj)
-        #old_att = att - temp
-        #assert ((inf_weight!=old_att).nnz==0)
+        t2 = time.time()
+
+        sim_matrix[tuple(trans_mal)] = 1
+        new_weight = n_adj.multiply(sim_matrix)
+
+
+        t3 = time.time()
+        
+        assert ((inf_weight!=new_weight).nnz==0)
+        print("old time:"+str(t2-t1))
+        print("new time:"+str(t2-t1))
+        print("-----")
 
 
 
