@@ -113,16 +113,21 @@ def SpectralDistance(adj,m_adj):
     evals,evecs = np.linalg.eig(L_norm.todense())
     evals = evals.real
     #print(evals)
-    #print(evecs.shape)
+    print(evecs.shape)
     
     m_evals, m_evecs = np.linalg.eig(L_norm_m.todense())
     m_evals = m_evals.real
+
+    evec_dif = evecs - m_evecs
+
+    print("Evec difference:")
+
+    print(evec_dif)
+    print("================")
     
     #dif = (evals-m_evals)
     dif2 = sum(m_evals)-sum(evals)
     dif3 = np.linalg.norm(m_evals)-np.linalg.norm(evals)
-    print("Here are the DIF of eval")
-    print(dif3)
     #print(dif2)
     #np.set_printoptions(threshold=np.inf)
     #with open('Eigenvalus.log','a+') as f:
@@ -322,8 +327,8 @@ def accuracy_1(output,labels):
 
 
 if __name__ == "__main__":
-    #main()
-    multi_test()
+    main()
+    #multi_test()
 
 
 
