@@ -10,6 +10,7 @@ import argparse
 from scipy.sparse.linalg import eigs
 from scipy.sparse import csgraph,lil_matrix
 import time
+from scipy import spatial
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=15, help='Random seed.')

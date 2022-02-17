@@ -11,6 +11,7 @@ from sklearn.preprocessing import normalize
 from tqdm import tqdm
 from scipy.sparse.linalg import eigs
 from scipy.sparse import csgraph,lil_matrix
+from scipy import spatial
 
 # arguments
 parser = argparse.ArgumentParser()
@@ -165,7 +166,7 @@ def SpectralDistance(adj,m_adj):
     #print(np.where(S_Dis == max(S_Dis)))
     #dif = evals-m_evals
 
-    return S_Dis,dif2
+    return S_Dis, dif2, evec_dif
 """
     print("=======test on clean adj===================")
     print("without defense :: ")
@@ -203,6 +204,32 @@ def test(adj, features, target, defense_al=False):
 
     return acc_test.item()
 """
+def multi_evecs():
+    cnt = 0
+    degrees = adj.sum(0).A1
+    node_list = select_nodes(num_target=10)
+    print(node_list)
+    a = []
+    num = len(node_list)
+    print('=== Attacking %s nodes respectively ===' % num)
+    for target_node in tqdm(node_list):
+        n_perturbations = int(degrees[target_node])
+        if n_perturbations <1:  # at least one perturbation
+            continue
+
+        model = Nettack(surrogate, nnodes=adj.shape[0], attack_structure=True, attack_features=False, device=device)
+        model = model.to(device)
+        model.attack(features, adj, labels, target_node, n_perturbations, direct=args.direct, n_influencers = influencers, verbose=False)
+        modified_adj = model.modified_adj
+        modified_features = model.modified_features
+
+        S_Dis, sum_eigv_dif, evec_dif = SpectralDistance(adj,modified_adj)
+        a.append(evec_dif.flatten())
+    
+
+    mean = np.mean(a, axis=0)
+    var = np.var(a, axis=0)
+    print('Mean:'.format(mean, var))
 
 
 def multi_test():
@@ -327,8 +354,9 @@ def accuracy_1(output,labels):
 
 
 if __name__ == "__main__":
-    main()
+    #main()
     #multi_test()
+    multi_evecs()
 
 
 
