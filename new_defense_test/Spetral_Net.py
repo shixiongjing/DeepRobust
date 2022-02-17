@@ -216,7 +216,7 @@ def multi_evecs():
     def get_angle(x,y):
         u1 = x/np.linalg.norm(x)
         u2 = y/np.linalg.norm(y)
-        return np.arccos(np.clip(np.dot(u1, u2.T), -1.0, 1.0))
+        return np.arccos(np.clip(np.real(np.dot(u1, u2.T)), -1.0, 1.0))
 
     print('=== Attacking %s nodes respectively ===' % num)
     for target_node in tqdm(node_list):
@@ -240,7 +240,7 @@ def multi_evecs():
     mean = np.mean(a, axis=0)
     var = np.var(a, axis=0)
 
-    with open(args.dataset+'_'+args.model+'_Directions.log','a+') as f:
+    with open(args.dataset+'_'+args.model+'_Directions_r.log','a+') as f:
         print('Angle:',file=f)
         print(a_list,file=f)
         print('Mean:{}, Var:{}'.format(mean, var),file=f)
