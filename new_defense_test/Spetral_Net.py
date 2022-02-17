@@ -240,6 +240,7 @@ def multi_evecs():
     mean = np.mean(a, axis=0)
     var = np.var(a, axis=0)
 
+    np.set_printoptions(threshold=np.inf)
     with open(args.dataset+'_'+args.model+'_Directions_r.log','a+') as f:
         print('Angle:',file=f)
         print(a_list,file=f)
