@@ -229,7 +229,7 @@ def multi_evecs():
 
     mean = np.mean(a, axis=0)
     var = np.var(a, axis=0)
-    print('Mean:'.format(mean, var))
+    print('Mean:{}, Var:{}'.format(mean, var))
 
 
 def multi_test():
