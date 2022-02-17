@@ -204,13 +204,22 @@ def test(adj, features, target, defense_al=False):
 
     return acc_test.item()
 """
+
 def multi_evecs():
     cnt = 0
     degrees = adj.sum(0).A1
     node_list = select_nodes(num_target=10)
     print(node_list)
     a = []
+    angle = []
     num = len(node_list)
+    def get_angle(x,y):
+        u1 = x/np.linalg.norm(x)
+        u2 = y/np.linalg.norm(y)
+        dot_product = np.dot(u1, u2)
+        angle = np.arccos(dot_product)
+        return angle
+
     print('=== Attacking %s nodes respectively ===' % num)
     for target_node in tqdm(node_list):
         n_perturbations = int(degrees[target_node])
@@ -225,11 +234,18 @@ def multi_evecs():
 
         S_Dis, sum_eigv_dif, evec_dif = SpectralDistance(adj,modified_adj)
         a.append(evec_dif.flatten())
-    
+        if(len(a)==2):
+            print('angle test:{}'.format(get_angle(a[0], a[1])))
+
+    a_list = [get_angle(x,y) for x in a for y in a]
 
     mean = np.mean(a, axis=0)
     var = np.var(a, axis=0)
-    print('Mean:{}, Var:{}'.format(mean, var))
+
+    with open(args.dataset+'_'+args.model+'_Directions.log','a+') as f:
+        print('Angle:',file=f)
+        print(a_list,file=f)
+        print('Mean:{}, Var:{}'.format(mean, var),file=f)
 
 
 def multi_test():
