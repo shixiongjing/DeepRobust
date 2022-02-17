@@ -216,7 +216,7 @@ def multi_evecs():
     def get_angle(x,y):
         u1 = x/np.linalg.norm(x)
         u2 = y/np.linalg.norm(y)
-        return np.arccos(np.clip(np.dot(u1, u2), -1.0, 1.0))
+        return np.arccos(np.clip(np.dot(u1, u2.T), -1.0, 1.0))
 
     print('=== Attacking %s nodes respectively ===' % num)
     for target_node in tqdm(node_list):
